@@ -4,7 +4,7 @@
  */
 "use strict";
 
-const VERSION = "1.1.4";
+const VERSION = "1.1.6";
 const BODY_FONT = "Univers 55";
 const HEADER_FONT = "Univers";
 
@@ -15,7 +15,9 @@ const HEADER_FONT = "Univers";
 })();
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const PRICE_TAB_POS = "5400"; // 額装併記の2列整列タブストップ(twips)
-const PLACEHOLDER = "（要入力）";
+// 価格が読み取れない場合のプレースホルダー(最終書式に合わせ、そのまま数字を上書きできる形に)
+const AMT_PLACEHOLDER = "0,000";   // 金額
+const CUR_PLACEHOLDER = "XXX";     // 通貨コード
 
 Office.onReady((info) => {
   console.log(`[ファクトシート整形] version ${VERSION} loaded`);
@@ -23,6 +25,13 @@ Office.onReady((info) => {
   if (info.host === Office.HostType.Word) {
     btn.disabled = false;
     btn.addEventListener("click", run);
+    // Word Online(ブラウザ版)は埋め込み画像(VML)を保持できず脱落するため警告
+    try {
+      if (Office.context.platform === Office.PlatformType.OfficeOnline) {
+        const el = document.getElementById("onlineWarn");
+        if (el) el.style.display = "block";
+      }
+    } catch (e) { /* platform判定不可時は無視 */ }
   } else {
     setStatus('<div class="error">このアドインはWord専用です。</div>');
   }
@@ -112,23 +121,24 @@ function detectPriceMode(text) {
 /* モードに応じた価格行を組み立てる。各行は {type:"line",text} または {type:"cols",cols:[左,右]} */
 function buildPriceLines(comp, dual, framing) {
   const warns = [];
-  const P = PLACEHOLDER;
+  const A = AMT_PLACEHOLDER;
   if (!framing) {
     if (dual) {
-      const j = comp.jpyBase || P, u = comp.usdBase || P;
-      if (!comp.jpyBase) warns.push("JPY金額が元ファイルに無いため（要入力）にしました。手動で入力してください。");
+      const j = comp.jpyBase || A, u = comp.usdBase || A;
+      if (!comp.jpyBase) warns.push("JPY金額が元ファイルに無いため 0,000 にしました。手動で入力してください。");
       if (!comp.usdBase) warns.push("USD金額が抽出できませんでした。手動で確認してください。");
       return { lines: [{ type: "line", text: `JPY ${j} / USD ${u} excl. TAX` }], warns };
     }
     if (comp.usdBase) return { lines: [{ type: "line", text: `USD ${comp.usdBase} excl. TAX` }], warns };
     if (comp.jpyBase) return { lines: [{ type: "line", text: `JPY ${comp.jpyBase} excl. TAX` }], warns };
-    warns.push("価格が抽出できませんでした。手動で入力してください。");
-    return { lines: [{ type: "line", text: P }], warns };
+    // 価格が全く読み取れない場合はテンプレート文言を挿入(通貨・金額とも要上書き)
+    warns.push("価格が読み取れませんでした。通貨・金額を手動で入力してください。");
+    return { lines: [{ type: "line", text: `${CUR_PLACEHOLDER} ${A} excl. TAX` }], warns };
   }
   // 額装あり
   if (dual) {
-    const ub = comp.usdBase || P, jb = comp.jpyBase || P;
-    const uf = comp.usdFraming || P, jf = comp.jpyFraming || P;
+    const ub = comp.usdBase || A, jb = comp.jpyBase || A;
+    const uf = comp.usdFraming || A, jf = comp.jpyFraming || A;
     if (!(comp.jpyBase && comp.jpyFraming)) warns.push("JPY金額が不足しています。手動で入力してください。");
     if (!comp.usdFraming) warns.push("USD Framing金額が抽出できませんでした。手動で確認してください。");
     return {
@@ -138,9 +148,9 @@ function buildPriceLines(comp, dual, framing) {
       ], warns,
     };
   }
-  const cur = comp.usdBase ? "USD" : (comp.jpyBase ? "JPY" : "USD");
-  const base = comp.usdBase || comp.jpyBase || P;
-  const fram = comp.usdFraming || comp.jpyFraming || P;
+  const cur = comp.usdBase ? "USD" : (comp.jpyBase ? "JPY" : CUR_PLACEHOLDER);
+  const base = comp.usdBase || comp.jpyBase || A;
+  const fram = comp.usdFraming || comp.jpyFraming || A;
   return {
     lines: [
       { type: "cols", cols: [`${cur} ${base}`] },
@@ -334,11 +344,8 @@ async function run() {
       console.log("[ファクトシート整形] fields:", JSON.stringify(fields));
       console.log("[ファクトシート整形] ooxml:", ooxml);
       await insertOoxmlWithFallback(ctx, ooxml, imagePara);
-
-      // 本文フォント統一(画像段落の改行runにも適用)。ヘッダー/フッターには影響しない
-      stage = "本文フォント統一";
-      ctx.document.body.font.name = BODY_FONT;
-      await ctx.sync();
+      // 挿入する各段落・runには既にUnivers 55を付与済みのため、
+      // body全体へのフォント適用は行わない(画像段落に触れるとWord OnlineがVML画像を脱落させるため)
 
       // ヘッダーの作家名差し替え(書式・罫線・空段落は保持)
       stage = "ヘッダーの作家名差し替え";

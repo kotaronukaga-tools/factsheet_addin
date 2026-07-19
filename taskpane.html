@@ -40,16 +40,20 @@
 <body>
   <h1>ファクトシート整形</h1>
   <p class="sub">Artlogic書き出しのファクトシートを社内書式に整形します</p>
+  <div id="onlineWarn" class="warn" style="display:none">
+    ⚠ ブラウザ版（Word Online）では、整形時に作品画像が消えることがあります。<br>
+    <b>Mac版Wordでの使用を推奨します。</b>
+  </div>
   <button id="run" disabled>整形を実行</button>
   <div id="status"></div>
   <p class="note">
     価格の形式（単一通貨／円・USD併記／額装あり）は元ファイルから自動判定します。<br>
-    元ファイルに無い金額は「（要入力）」と表示されるので手動で上書きしてください。<br>
+    価格が読み取れない場合は「XXX 0,000 excl. TAX」のように表示されるので手動で上書きしてください。<br>
     整形後は必ず内容を確認してから保存してください。<br>
     結果を取り消すには保存せずに閉じるか、⌘Z（元に戻す）を使用します。<br>
     うまく整形されない場合は、そのファイルをPR担当（Kawasaki）に共有してください。
   </p>
   <div id="ver" class="ver"></div>
-  <script src="taskpane.js?v=1.1.4"></script>
+  <script src="taskpane.js?v=1.1.6"></script>
 </body>
 </html>
