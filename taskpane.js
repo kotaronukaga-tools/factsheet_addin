@@ -4,7 +4,7 @@
  */
 "use strict";
 
-const VERSION = "1.1.2";
+const VERSION = "1.1.3";
 const BODY_FONT = "Univers 55";
 const HEADER_FONT = "Univers";
 
@@ -245,6 +245,32 @@ function describeError(e, stage) {
   return html;
 }
 
+/* insertOoxmlのホスト差異を吸収するフォールバック。旧本文段落を削除した後に呼ぶ前提で、
+ * いずれの方式も「画像段落の直後(=末尾)」に挿入される。
+ * Body.insertOoxml(End) や Range.insertOoxml は Paragraph.insertOoxml(After) より広くサポートされる。 */
+async function insertOoxmlWithFallback(ctx, ooxml, imagePara) {
+  const attempts = [
+    () => ctx.document.body.insertOoxml(ooxml, Word.InsertLocation.end),
+  ];
+  if (imagePara) {
+    attempts.push(() =>
+      imagePara.getRange(Word.RangeLocation.after).insertOoxml(ooxml, Word.InsertLocation.after));
+  }
+  let lastErr;
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      attempts[i]();
+      await ctx.sync();
+      console.log(`[ファクトシート整形] insertOoxml 方式${i + 1} 成功`);
+      return;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[ファクトシート整形] insertOoxml 方式${i + 1} 失敗:`, e && e.message);
+    }
+  }
+  throw lastErr;
+}
+
 async function run() {
   const btn = document.getElementById("run");
   btn.disabled = true;
@@ -299,23 +325,20 @@ async function run() {
         warns.push("抽出できなかった項目: " + missing.map(k => ja[k]).join("・") + "（該当箇所が空欄になります。手動で補ってください）");
       }
 
-      // 本文再構成: 画像段落以外を削除し、テンプレート構造のOOXMLを挿入
-      stage = "本文の再構成(OOXML挿入)";
-      const ooxml = buildBodyOoxml(fields, priceLines);
-      console.log("[ファクトシート整形] fields:", JSON.stringify(fields));
-      console.log("[ファクトシート整形] ooxml:", ooxml);
-      if (imagePara) {
-        imagePara.insertOoxml(ooxml, Word.InsertLocation.after);
-      } else {
-        ctx.document.body.insertOoxml(ooxml, Word.InsertLocation.start);
-      }
-      await ctx.sync();
-
-      stage = "旧段落の削除";
+      // 旧本文段落を先に削除(必要データは抽出済み)。画像段落だけ残す
+      stage = "旧本文段落の削除";
       detailPara.delete();
       if (pricePara) pricePara.delete();
       for (const p of others) p.delete();
       await ctx.sync();
+
+      // テンプレート構造のOOXMLを画像の直後(=末尾)に挿入。
+      // Paragraph.insertOoxml(After) はMac/Onlineで拒否されるため方式を切り替え+フォールバック
+      stage = "本文の再構成(OOXML挿入)";
+      const ooxml = buildBodyOoxml(fields, priceLines);
+      console.log("[ファクトシート整形] fields:", JSON.stringify(fields));
+      console.log("[ファクトシート整形] ooxml:", ooxml);
+      await insertOoxmlWithFallback(ctx, ooxml, imagePara);
 
       // 本文フォント統一(画像段落の改行runにも適用)。ヘッダー/フッターには影響しない
       stage = "本文フォント統一";
