@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ファクトシート整形</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Segoe UI", sans-serif;
+      margin: 0; padding: 16px; color: #1a1a1a; font-size: 13px;
+    }
+    h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+    .sub { color: #666; margin: 0 0 16px; font-size: 12px; }
+    button#run {
+      width: 100%; padding: 12px; font-size: 14px; font-weight: 600;
+      background: #141414; color: #fff; border: none; border-radius: 6px;
+      cursor: pointer;
+    }
+    button#run:disabled { background: #999; cursor: default; }
+    button#run:hover:not(:disabled) { background: #333; }
+    #status { margin-top: 16px; line-height: 1.7; }
+    .ok { color: #0a6b2d; }
+    .warn { background: #fff4e0; border-left: 3px solid #e8a13c; padding: 8px 10px; margin: 8px 0; }
+    .error { background: #fdecec; border-left: 3px solid #d43c3c; padding: 8px 10px; margin: 8px 0; }
+    table.fields { border-collapse: collapse; margin-top: 8px; width: 100%; }
+    table.fields td { padding: 3px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
+    table.fields td:first-child { color: #666; white-space: nowrap; width: 5em; }
+    .note { color: #888; font-size: 11px; margin-top: 16px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <h1>ファクトシート整形</h1>
+  <p class="sub">Artlogic書き出しのファクトシートを社内書式に整形します</p>
+  <button id="run" disabled>整形を実行</button>
+  <div id="status"></div>
+  <p class="note">
+    整形後は必ず内容を確認してから保存してください。<br>
+    結果を取り消すには保存せずに閉じるか、⌘Z（元に戻す）を使用します。<br>
+    うまく整形されない場合は、そのファイルをPR担当（Yui）に共有してください。
+  </p>
+  <script src="taskpane.js"></script>
+</body>
+</html>

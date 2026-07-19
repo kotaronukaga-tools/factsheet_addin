@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+  <Id>C3A0C188-845C-44FB-ABDC-ADA62326A3E1</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>KOTARO NUKAGA</ProviderName>
+  <DefaultLocale>ja-JP</DefaultLocale>
+  <DisplayName DefaultValue="ファクトシート整形"/>
+  <Description DefaultValue="Artlogic書き出しのファクトシートをKOTARO NUKAGA社内書式に整形します"/>
+  <IconUrl DefaultValue="__ADDIN_BASE_URL__/assets/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="__ADDIN_BASE_URL__/assets/icon-80.png"/>
+  <SupportUrl DefaultValue="https://www.kotaronukaga.com"/>
+  <Hosts>
+    <Host Name="Document"/>
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.3">
+      <Set Name="WordApi" MinVersion="1.3"/>
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="__ADDIN_BASE_URL__/taskpane.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="KnFactsheetGroup">
+                <Label resid="GroupLabel"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon16"/>
+                  <bt:Image size="32" resid="Icon32"/>
+                  <bt:Image size="80" resid="Icon80"/>
+                </Icon>
+                <Control xsi:type="Button" id="KnFactsheetButton">
+                  <Label resid="ButtonLabel"/>
+                  <Supertip>
+                    <Title resid="ButtonLabel"/>
+                    <Description resid="ButtonTooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon16"/>
+                    <bt:Image size="32" resid="Icon32"/>
+                    <bt:Image size="80" resid="Icon80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>KnFactsheetTaskpane</TaskpaneId>
+                    <SourceLocation resid="TaskpaneUrl"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon16" DefaultValue="__ADDIN_BASE_URL__/assets/icon-16.png"/>
+        <bt:Image id="Icon32" DefaultValue="__ADDIN_BASE_URL__/assets/icon-32.png"/>
+        <bt:Image id="Icon80" DefaultValue="__ADDIN_BASE_URL__/assets/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="TaskpaneUrl" DefaultValue="__ADDIN_BASE_URL__/taskpane.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GroupLabel" DefaultValue="KOTARO NUKAGA"/>
+        <bt:String id="ButtonLabel" DefaultValue="ファクトシート整形"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="ButtonTooltip" DefaultValue="Artlogic書き出しのファクトシートを社内書式に整形します"/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
