@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ファクトシート整形</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
@@ -31,6 +34,7 @@
     table.fields td { padding: 3px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
     table.fields td:first-child { color: #666; white-space: nowrap; width: 5em; }
     .note { color: #888; font-size: 11px; margin-top: 16px; line-height: 1.6; }
+    .ver { color: #bbb; font-size: 10px; margin-top: 12px; text-align: right; }
     fieldset.opts { border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; margin: 0 0 14px; }
     fieldset.opts legend { font-size: 12px; color: #666; padding: 0 4px; }
     fieldset.opts .row { display: flex; align-items: center; justify-content: space-between; margin: 6px 0; }
@@ -65,8 +69,9 @@
   <p class="note">
     整形後は必ず内容を確認してから保存してください。<br>
     結果を取り消すには保存せずに閉じるか、⌘Z（元に戻す）を使用します。<br>
-    うまく整形されない場合は、そのファイルをPR担当（Yui）に共有してください。
+    うまく整形されない場合は、そのファイルをPR担当（Kawasaki）に共有してください。
   </p>
-  <script src="taskpane.js"></script>
+  <div id="ver" class="ver"></div>
+  <script src="taskpane.js?v=1.1.2"></script>
 </body>
 </html>

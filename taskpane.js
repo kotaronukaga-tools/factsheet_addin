@@ -4,13 +4,21 @@
  */
 "use strict";
 
+const VERSION = "1.1.2";
 const BODY_FONT = "Univers 55";
 const HEADER_FONT = "Univers";
+
+// バージョン表示はOffice初期化を待たず即時に(古いキャッシュ判別のため)
+(function showVersion() {
+  const el = document.getElementById("ver");
+  if (el) el.textContent = "v" + VERSION;
+})();
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const PRICE_TAB_POS = "5400"; // 額装併記の2列整列タブストップ(twips)
 const PLACEHOLDER = "（要入力）";
 
 Office.onReady((info) => {
+  console.log(`[ファクトシート整形] version ${VERSION} loaded`);
   const btn = document.getElementById("run");
   if (info.host === Office.HostType.Word) {
     btn.disabled = false;
