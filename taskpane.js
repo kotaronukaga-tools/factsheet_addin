@@ -4,7 +4,7 @@
  */
 "use strict";
 
-const VERSION = "1.1.3";
+const VERSION = "1.1.4";
 const BODY_FONT = "Univers 55";
 const HEADER_FONT = "Univers";
 
@@ -170,11 +170,12 @@ function tabRunXml() {
   return `<w:r><w:rPr>${fontXml(BODY_FONT)}</w:rPr><w:tab/></w:r>`;
 }
 
-function paraXml(runsXml, jc, tabPos) {
+function paraXml(runsXml, jc, tabPos, sz) {
   const tabs = tabPos ? `<w:tabs><w:tab w:val="left" w:pos="${tabPos}"/></w:tabs>` : "";
   const jcXml = jc ? `<w:jc w:val="${jc}"/>` : "";
+  const szXml = sz ? `<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/>` : "";
   return `<w:p><w:pPr>${tabs}<w:contextualSpacing/>${jcXml}` +
-    `<w:rPr>${fontXml(BODY_FONT)}</w:rPr></w:pPr>${runsXml}</w:p>`;
+    `<w:rPr>${fontXml(BODY_FONT)}${szXml}</w:rPr></w:pPr>${runsXml}</w:p>`;
 }
 
 function priceParasXml(priceLines) {
@@ -197,13 +198,15 @@ function priceParasXml(priceLines) {
 function buildBodyOoxml(fields, priceLines) {
   const titlePara = paraXml(
     brRunXml() + runXml(fields.title || "", { italic: true, sz: 32 }), "left");
+  // タイトルと制作年の間の1行空け(10.5pt = sz21)
+  const titleGapPara = paraXml("", "left", null, 21);
   let detailRuns = runXml(fields.year || "");
   for (const part of fields.middle) detailRuns += brRunXml() + runXml(part);
   detailRuns += brRunXml() + runXml(fields.code ? `（${fields.code}）` : "");
   const detailPara = paraXml(detailRuns, "left");
   const emptyPara = paraXml("");
   const priceParas = priceParasXml(priceLines);
-  const body = titlePara + detailPara + emptyPara + priceParas + emptyPara;
+  const body = titlePara + titleGapPara + detailPara + emptyPara + priceParas + emptyPara;
   return (
     '<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">' +
     '<pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml" pkg:padding="512">' +
@@ -218,11 +221,6 @@ function buildBodyOoxml(fields, priceLines) {
 }
 
 /* ---------- メイン処理 ---------- */
-
-function resolveMode(id, detected, values) {
-  const v = document.getElementById(id) ? document.getElementById(id).value : "auto";
-  return v === "auto" ? detected : values[v];
-}
 
 /* エラー詳細をパネルとコンソールの両方に出す(Word Onlineでのデバッグ用) */
 function describeError(e, stage) {
@@ -312,12 +310,9 @@ async function run() {
       const missing = ["artist", "title", "year", "code"].filter(k => !fields[k]);
       if (!fields.middle.length) missing.push("technique/size");
 
-      // 価格モード: UIで「自動判定」なら元ファイルから判定、明示指定ならそれを使う
+      // 価格の形式は常に元ファイルから自動判定する
       const comp = parsePriceComponents(fields.priceRaw);
-      const detected = detectPriceMode(fields.priceRaw);
-      // UIは2択: 「単一通貨/なし」(value=auto)は自動判定、「併記/あり」は強制指定
-      const dual = resolveMode("currencyMode", detected.dual, { dual: true });
-      const framing = resolveMode("framingMode", detected.framing, { framed: true });
+      const { dual, framing } = detectPriceMode(fields.priceRaw);
       const { lines: priceLines, warns } = buildPriceLines(comp, dual, framing);
 
       if (missing.length) {
