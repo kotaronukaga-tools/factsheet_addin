@@ -198,10 +198,10 @@ function buildBodyOoxml(fields, priceLines) {
   const body = titlePara + detailPara + emptyPara + priceParas + emptyPara;
   return (
     '<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">' +
-    '<pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml">' +
+    '<pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml" pkg:padding="512">' +
     '<pkg:xmlData>' +
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="/word/document.xml"/>' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
     '</Relationships></pkg:xmlData></pkg:part>' +
     '<pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml">' +
     `<pkg:xmlData><w:document xmlns:w="${W_NS}"><w:body>${body}</w:body></w:document></pkg:xmlData>` +
@@ -216,15 +216,39 @@ function resolveMode(id, detected, values) {
   return v === "auto" ? detected : values[v];
 }
 
+/* エラー詳細をパネルとコンソールの両方に出す(Word Onlineでのデバッグ用) */
+function describeError(e, stage) {
+  console.error(`[ファクトシート整形] エラー stage=${stage}`, e);
+  let html = `<div class="error">エラー（${esc(stage)}）: ${esc(e.message || e)}</div>`;
+  if (typeof OfficeExtension !== "undefined" && e instanceof OfficeExtension.Error) {
+    const d = e.debugInfo || {};
+    const details = {
+      code: e.code,
+      errorLocation: d.errorLocation,
+      statement: d.statement,
+      surroundingStatements: d.surroundingStatements,
+    };
+    console.error("[ファクトシート整形] debugInfo", d);
+    html += `<pre class="debug">${esc(JSON.stringify(details, null, 2))}</pre>`;
+    html += '<div class="note">上記の詳細（特にerrorLocation）をコピーしてKawasakiに共有してください。</div>';
+  } else {
+    html += '<div class="note">解決しない場合はこのファイルをKawasakiに共有してください。</div>';
+  }
+  return html;
+}
+
 async function run() {
   const btn = document.getElementById("run");
   btn.disabled = true;
   setStatus("整形中…");
+  let stage = "初期化";
   try {
     await Word.run(async (ctx) => {
+      stage = "本文の読み取り";
       const paras = ctx.document.body.paragraphs;
       paras.load("items/text");
       await ctx.sync();
+      stage = "項目の抽出";
 
       const items = paras.items;
       let imagePara = null, detailPara = null, pricePara = null;
@@ -268,20 +292,30 @@ async function run() {
       }
 
       // 本文再構成: 画像段落以外を削除し、テンプレート構造のOOXMLを挿入
+      stage = "本文の再構成(OOXML挿入)";
       const ooxml = buildBodyOoxml(fields, priceLines);
+      console.log("[ファクトシート整形] fields:", JSON.stringify(fields));
+      console.log("[ファクトシート整形] ooxml:", ooxml);
       if (imagePara) {
         imagePara.insertOoxml(ooxml, Word.InsertLocation.after);
       } else {
         ctx.document.body.insertOoxml(ooxml, Word.InsertLocation.start);
       }
+      await ctx.sync();
+
+      stage = "旧段落の削除";
       detailPara.delete();
       if (pricePara) pricePara.delete();
       for (const p of others) p.delete();
+      await ctx.sync();
 
       // 本文フォント統一(画像段落の改行runにも適用)。ヘッダー/フッターには影響しない
+      stage = "本文フォント統一";
       ctx.document.body.font.name = BODY_FONT;
+      await ctx.sync();
 
       // ヘッダーの作家名差し替え(書式・罫線・空段落は保持)
+      stage = "ヘッダーの作家名差し替え";
       let headerDone = false;
       if (fields.artist) {
         const header = ctx.document.sections.getFirst()
@@ -305,6 +339,7 @@ async function run() {
         warns.push("ヘッダー内に差し替え対象の作家名が見つかりませんでした。手動で確認してください。");
       }
       await ctx.sync();
+      stage = "結果表示";
 
       // 結果表示
       const priceText = priceLines.map(ln =>
@@ -319,8 +354,7 @@ async function run() {
       setStatus(html);
     });
   } catch (e) {
-    setStatus(`<div class="error">エラー: ${esc(e.message || e)}</div>` +
-      '<div class="note">解決しない場合はこのファイルをPR担当（Yui）に共有してください。</div>');
+    setStatus(describeError(e, stage));
   } finally {
     btn.disabled = false;
   }
