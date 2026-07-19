@@ -7,6 +7,8 @@
 const BODY_FONT = "Univers 55";
 const HEADER_FONT = "Univers";
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const PRICE_TAB_POS = "5400"; // 額装併記の2列整列タブストップ(twips)
+const PLACEHOLDER = "（要入力）";
 
 Office.onReady((info) => {
   const btn = document.getElementById("run");
@@ -31,18 +33,22 @@ function esc(s) {
 /* ---------- 抽出ロジック (transform.py と同一ルール) ---------- */
 
 function splitLines(text) {
-  // Wordの段落内改行(ソフト改行)は \u000b、環境により \r \n も現れる
+  // Wordの段落内ソフト改行はU+000B。CR/LF/U+2028も区切りに含める
   return text.split(/[\u000b\r\n\u2028]+/).map(s => s.trim()).filter(Boolean);
+}
+
+function cleanLine(txt) {
+  // 軽微な体裁補正: 読点・カンマ前の余分な空白除去、連続空白の圧縮
+  return txt.replace(/\s+([,，、.。])/g, "$1").replace(/[ 　]{2,}/g, " ").trim();
 }
 
 const TITLE_YEAR_RE = /^(.*?),\s*((?:ca\.\s*)?\d{4}(?:\s*[-–]\s*\d{2,4})?)$/;
 const CODE_RE = /^[（(]?[A-Z]{2,4}_\d+[a-z]?[）)]?$/;
-const SIZE_RE = /\d+(\.\d+)?\s*(x|×)\s*\d+/;
 const PRICE_RE = /JPY|USD|\$|¥|円/;
 
 function extractFields(detailText, priceText) {
   const lines = splitLines(detailText);
-  const fields = { artist: null, title: null, year: null, technique: null, size: null, code: null };
+  const fields = { artist: null, title: null, year: null, code: null, middle: [] };
   const rest = [];
   for (const txt of lines) {
     if (fields.artist === null) {
@@ -57,35 +63,82 @@ function extractFields(detailText, priceText) {
     }
     rest.push(txt);
   }
+  // 管理番号(コード)を分離。それ以外(技法・サイズ等)は順序保持で中間行に
   for (const txt of rest) {
     if (fields.code === null && CODE_RE.test(txt)) {
       fields.code = txt.replace(/[（()）]/g, "");
-    } else if (fields.size === null && SIZE_RE.test(txt)) {
-      fields.size = txt;
-    } else if (fields.technique === null) {
-      fields.technique = txt;
+    } else {
+      fields.middle.push(cleanLine(txt));
     }
   }
   fields.priceRaw = (priceText || "").trim();
   return fields;
 }
 
-/* 価格整形。併記(JPY+USD)は書式未確定のため無変換で警告 */
-function normalizePrice(text) {
-  const t = (text || "").trim();
-  if (!t) return { price: t, warn: null };
-  const hasJpy = /JPY|¥|円/.test(t);
-  const hasUsd = /USD|\$/.test(t);
-  if (hasJpy && hasUsd) {
-    return { price: t, warn: "円・USD併記の価格は書式が未確定のため変更していません。手動で確認してください。" };
+/* ---------- 価格ロジック ---------- */
+
+const NUM = "([\\d,]+(?:\\.\\d+)?)";
+
+function parsePriceComponents(text) {
+  const t = text || "";
+  const mUf = t.match(new RegExp("Framing\\s+USD\\s*\\$?\\s*" + NUM, "i"));
+  const mJf = t.match(new RegExp("Framing\\s+JPY\\s*¥?\\s*" + NUM, "i"));
+  const rest = t
+    .replace(new RegExp("\\+?\\s*Framing\\s+USD\\s*\\$?\\s*" + NUM, "ig"), "")
+    .replace(new RegExp("\\+?\\s*Framing\\s+JPY\\s*¥?\\s*" + NUM, "ig"), "");
+  const mUb = rest.match(new RegExp("USD\\s*\\$?\\s*" + NUM, "i"));
+  const mJb = rest.match(new RegExp("JPY\\s*¥?\\s*" + NUM, "i"));
+  return {
+    usdBase: mUb ? mUb[1] : null,
+    usdFraming: mUf ? mUf[1] : null,
+    jpyBase: mJb ? mJb[1] : null,
+    jpyFraming: mJf ? mJf[1] : null,
+  };
+}
+
+function detectPriceMode(text) {
+  const t = text || "";
+  return { dual: /USD|\$/.test(t) && /JPY|¥|円/.test(t), framing: /Framing/i.test(t) };
+}
+
+/* モードに応じた価格行を組み立てる。各行は {type:"line",text} または {type:"cols",cols:[左,右]} */
+function buildPriceLines(comp, dual, framing) {
+  const warns = [];
+  const P = PLACEHOLDER;
+  if (!framing) {
+    if (dual) {
+      const j = comp.jpyBase || P, u = comp.usdBase || P;
+      if (!comp.jpyBase) warns.push("JPY金額が元ファイルに無いため（要入力）にしました。手動で入力してください。");
+      if (!comp.usdBase) warns.push("USD金額が抽出できませんでした。手動で確認してください。");
+      return { lines: [{ type: "line", text: `JPY ${j} / USD ${u} excl. TAX` }], warns };
+    }
+    if (comp.usdBase) return { lines: [{ type: "line", text: `USD ${comp.usdBase} excl. TAX` }], warns };
+    if (comp.jpyBase) return { lines: [{ type: "line", text: `JPY ${comp.jpyBase} excl. TAX` }], warns };
+    warns.push("価格が抽出できませんでした。手動で入力してください。");
+    return { lines: [{ type: "line", text: P }], warns };
   }
-  let p = t.replace(/USD\s*\$\s*/, "USD ").replace(/^\$\s*/, "USD ");
-  if (!/excl\.?\s*TAX/i.test(p)) {
-    p += " excl. TAX";
-  } else {
-    p = p.replace(/\s*excl\.?\s*TAX\.?/i, " excl. TAX");
+  // 額装あり
+  if (dual) {
+    const ub = comp.usdBase || P, jb = comp.jpyBase || P;
+    const uf = comp.usdFraming || P, jf = comp.jpyFraming || P;
+    if (!(comp.jpyBase && comp.jpyFraming)) warns.push("JPY金額が不足しています。手動で入力してください。");
+    if (!comp.usdFraming) warns.push("USD Framing金額が抽出できませんでした。手動で確認してください。");
+    return {
+      lines: [
+        { type: "cols", cols: [`USD ${ub}`, `JPY ${jb}`] },
+        { type: "cols", cols: [`+ Framing USD ${uf} excl. TAX`, `+ Framing JPY ${jf} excl. TAX`] },
+      ], warns,
+    };
   }
-  return { price: p, warn: null };
+  const cur = comp.usdBase ? "USD" : (comp.jpyBase ? "JPY" : "USD");
+  const base = comp.usdBase || comp.jpyBase || P;
+  const fram = comp.usdFraming || comp.jpyFraming || P;
+  return {
+    lines: [
+      { type: "cols", cols: [`${cur} ${base}`] },
+      { type: "cols", cols: [`+ Framing ${cur} ${fram} excl. TAX`] },
+    ], warns,
+  };
 }
 
 /* ---------- OOXML生成 (Editテンプレートと同一構造) ---------- */
@@ -105,23 +158,44 @@ function brRunXml() {
   return `<w:r><w:rPr>${fontXml(BODY_FONT)}</w:rPr><w:br/></w:r>`;
 }
 
-function paraXml(runsXml, jc) {
+function tabRunXml() {
+  return `<w:r><w:rPr>${fontXml(BODY_FONT)}</w:rPr><w:tab/></w:r>`;
+}
+
+function paraXml(runsXml, jc, tabPos) {
+  const tabs = tabPos ? `<w:tabs><w:tab w:val="left" w:pos="${tabPos}"/></w:tabs>` : "";
   const jcXml = jc ? `<w:jc w:val="${jc}"/>` : "";
-  return `<w:p><w:pPr><w:contextualSpacing/>${jcXml}` +
+  return `<w:p><w:pPr>${tabs}<w:contextualSpacing/>${jcXml}` +
     `<w:rPr>${fontXml(BODY_FONT)}</w:rPr></w:pPr>${runsXml}</w:p>`;
 }
 
-function buildBodyOoxml(fields, price) {
+function priceParasXml(priceLines) {
+  let out = "";
+  priceLines.forEach((ln, i) => {
+    const last = i === priceLines.length - 1;
+    if (ln.type === "line") {
+      out += paraXml(runXml(ln.text) + (last ? brRunXml() : ""), "left");
+    } else {
+      const cols = ln.cols;
+      let runs = runXml(cols[0]);
+      if (cols.length > 1) runs += tabRunXml() + runXml(cols[1]);
+      if (last) runs += brRunXml();
+      out += paraXml(runs, "left", cols.length > 1 ? PRICE_TAB_POS : null);
+    }
+  });
+  return out;
+}
+
+function buildBodyOoxml(fields, priceLines) {
   const titlePara = paraXml(
     brRunXml() + runXml(fields.title || "", { italic: true, sz: 32 }), "left");
-  const detailPara = paraXml(
-    runXml(fields.year || "") + brRunXml() +
-    runXml(fields.technique || "") + brRunXml() +
-    runXml(fields.size || "") + brRunXml() +
-    runXml(fields.code ? `（${fields.code}）` : ""), "left");
+  let detailRuns = runXml(fields.year || "");
+  for (const part of fields.middle) detailRuns += brRunXml() + runXml(part);
+  detailRuns += brRunXml() + runXml(fields.code ? `（${fields.code}）` : "");
+  const detailPara = paraXml(detailRuns, "left");
   const emptyPara = paraXml("");
-  const pricePara = paraXml(runXml(price) + brRunXml(), "left");
-  const body = titlePara + detailPara + emptyPara + pricePara + emptyPara;
+  const priceParas = priceParasXml(priceLines);
+  const body = titlePara + detailPara + emptyPara + priceParas + emptyPara;
   return (
     '<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">' +
     '<pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml">' +
@@ -136,6 +210,11 @@ function buildBodyOoxml(fields, price) {
 }
 
 /* ---------- メイン処理 ---------- */
+
+function resolveMode(id, detected, values) {
+  const v = document.getElementById(id) ? document.getElementById(id).value : "auto";
+  return v === "auto" ? detected : values[v];
+}
 
 async function run() {
   const btn = document.getElementById("run");
@@ -172,18 +251,24 @@ async function run() {
       }
 
       const fields = extractFields(detailPara.text, pricePara ? pricePara.text : "");
-      const missing = ["artist", "title", "year", "technique", "size", "code"]
-        .filter(k => !fields[k]);
-      const { price, warn } = normalizePrice(fields.priceRaw);
-      const warns = [];
-      if (warn) warns.push(warn);
+      const missing = ["artist", "title", "year", "code"].filter(k => !fields[k]);
+      if (!fields.middle.length) missing.push("technique/size");
+
+      // 価格モード: UIで「自動判定」なら元ファイルから判定、明示指定ならそれを使う
+      const comp = parsePriceComponents(fields.priceRaw);
+      const detected = detectPriceMode(fields.priceRaw);
+      // UIは2択: 「単一通貨/なし」(value=auto)は自動判定、「併記/あり」は強制指定
+      const dual = resolveMode("currencyMode", detected.dual, { dual: true });
+      const framing = resolveMode("framingMode", detected.framing, { framed: true });
+      const { lines: priceLines, warns } = buildPriceLines(comp, dual, framing);
+
       if (missing.length) {
-        const ja = { artist: "作家名", title: "作品名", year: "年", technique: "技法", size: "サイズ", code: "管理番号" };
+        const ja = { artist: "作家名", title: "作品名", year: "年", code: "管理番号", "technique/size": "技法・サイズ" };
         warns.push("抽出できなかった項目: " + missing.map(k => ja[k]).join("・") + "（該当箇所が空欄になります。手動で補ってください）");
       }
 
       // 本文再構成: 画像段落以外を削除し、テンプレート構造のOOXMLを挿入
-      const ooxml = buildBodyOoxml(fields, price);
+      const ooxml = buildBodyOoxml(fields, priceLines);
       if (imagePara) {
         imagePara.insertOoxml(ooxml, Word.InsertLocation.after);
       } else {
@@ -222,11 +307,13 @@ async function run() {
       await ctx.sync();
 
       // 結果表示
-      const ja = [["作家名", fields.artist], ["作品名", fields.title], ["年", fields.year],
-        ["技法", fields.technique], ["サイズ", fields.size], ["管理番号", fields.code],
-        ["価格", price]];
+      const priceText = priceLines.map(ln =>
+        ln.type === "line" ? ln.text : ln.cols.join("　　")).join(" / ");
+      const rows = [["作家名", fields.artist], ["作品名", fields.title], ["年", fields.year],
+        ["技法・サイズ", fields.middle.join(" / ")], ["管理番号", fields.code],
+        ["価格", priceText]];
       let html = '<div class="ok">✓ 整形が完了しました。内容を確認してから保存してください。</div>';
-      html += '<table class="fields">' + ja.map(([k, v]) =>
+      html += '<table class="fields">' + rows.map(([k, v]) =>
         `<tr><td>${k}</td><td>${esc(v || "（空欄）")}</td></tr>`).join("") + "</table>";
       for (const wmsg of warns) html += `<div class="warn">⚠ ${esc(wmsg)}</div>`;
       setStatus(html);

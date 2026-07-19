@@ -10,8 +10,8 @@
   <DefaultLocale>ja-JP</DefaultLocale>
   <DisplayName DefaultValue="ファクトシート整形"/>
   <Description DefaultValue="Artlogic書き出しのファクトシートをKOTARO NUKAGA社内書式に整形します"/>
-  <IconUrl DefaultValue="__ADDIN_BASE_URL__/assets/icon-32.png"/>
-  <HighResolutionIconUrl DefaultValue="__ADDIN_BASE_URL__/assets/icon-80.png"/>
+  <IconUrl DefaultValue="https://kotaronukaga-tools.github.io/factsheet_addin/assets/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://kotaronukaga-tools.github.io/factsheet_addin/assets/icon-80.png"/>
   <SupportUrl DefaultValue="https://www.kotaronukaga.com"/>
   <Hosts>
     <Host Name="Document"/>
@@ -22,7 +22,7 @@
     </Sets>
   </Requirements>
   <DefaultSettings>
-    <SourceLocation DefaultValue="__ADDIN_BASE_URL__/taskpane.html"/>
+    <SourceLocation DefaultValue="https://kotaronukaga-tools.github.io/factsheet_addin/taskpane.html"/>
   </DefaultSettings>
   <Permissions>ReadWriteDocument</Permissions>
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
@@ -62,12 +62,12 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon16" DefaultValue="__ADDIN_BASE_URL__/assets/icon-16.png"/>
-        <bt:Image id="Icon32" DefaultValue="__ADDIN_BASE_URL__/assets/icon-32.png"/>
-        <bt:Image id="Icon80" DefaultValue="__ADDIN_BASE_URL__/assets/icon-80.png"/>
+        <bt:Image id="Icon16" DefaultValue="https://kotaronukaga-tools.github.io/factsheet_addin/assets/icon-16.png"/>
+        <bt:Image id="Icon32" DefaultValue="https://kotaronukaga-tools.github.io/factsheet_addin/assets/icon-32.png"/>
+        <bt:Image id="Icon80" DefaultValue="https://kotaronukaga-tools.github.io/factsheet_addin/assets/icon-80.png"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="TaskpaneUrl" DefaultValue="__ADDIN_BASE_URL__/taskpane.html"/>
+        <bt:Url id="TaskpaneUrl" DefaultValue="https://kotaronukaga-tools.github.io/factsheet_addin/taskpane.html"/>
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GroupLabel" DefaultValue="KOTARO NUKAGA"/>
