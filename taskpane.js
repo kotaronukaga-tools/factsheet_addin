@@ -4,7 +4,7 @@
  */
 "use strict";
 
-const VERSION = "1.1.6";
+const VERSION = "1.1.7";
 const BODY_FONT = "Univers 55";
 const HEADER_FONT = "Univers";
 
@@ -61,7 +61,8 @@ function cleanLine(txt) {
 
 const TITLE_YEAR_RE = /^(.*?),\s*((?:ca\.\s*)?\d{4}(?:\s*[-–]\s*\d{2,4})?)$/;
 const CODE_RE = /^[（(]?[A-Z]{2,4}_\d+[a-z]?[）)]?$/;
-const PRICE_RE = /JPY|USD|\$|¥|円/;
+// 価格段落の判定に使う(通貨コード or 記号 or 「円」)。GBP/EUR対応で拡張
+const PRICE_RE = /JPY|USD|GBP|EUR|[$¥£€]|円/;
 
 function extractFields(detailText, priceText) {
   const lines = splitLines(detailText);
@@ -96,65 +97,78 @@ function extractFields(detailText, priceText) {
 
 const NUM = "([\\d,]+(?:\\.\\d+)?)";
 
+// 通貨コードと記号。JPYは国内通貨、それ以外(USD/GBP/EUR)は外貨として扱う。
+// 併記(dual)は「JPY + 外貨1種」を想定。外貨の追加はこの表とFOREIGN_CURRENCIESに足すだけ。
+const CURRENCY_SYMBOLS = { USD: "\\$", GBP: "£", EUR: "€", JPY: "¥" };
+const FOREIGN_CURRENCIES = ["USD", "GBP", "EUR"];
+
 function parsePriceComponents(text) {
   const t = text || "";
-  const mUf = t.match(new RegExp("Framing\\s+USD\\s*\\$?\\s*" + NUM, "i"));
-  const mJf = t.match(new RegExp("Framing\\s+JPY\\s*¥?\\s*" + NUM, "i"));
-  const rest = t
-    .replace(new RegExp("\\+?\\s*Framing\\s+USD\\s*\\$?\\s*" + NUM, "ig"), "")
-    .replace(new RegExp("\\+?\\s*Framing\\s+JPY\\s*¥?\\s*" + NUM, "ig"), "");
-  const mUb = rest.match(new RegExp("USD\\s*\\$?\\s*" + NUM, "i"));
-  const mJb = rest.match(new RegExp("JPY\\s*¥?\\s*" + NUM, "i"));
-  return {
-    usdBase: mUb ? mUb[1] : null,
-    usdFraming: mUf ? mUf[1] : null,
-    jpyBase: mJb ? mJb[1] : null,
-    jpyFraming: mJf ? mJf[1] : null,
-  };
+  const base = {}, framing = {};
+  for (const code of Object.keys(CURRENCY_SYMBOLS)) {
+    const sym = CURRENCY_SYMBOLS[code];
+    // Framing額を先に抜き出し、base検索がFraming額を拾わないようその通貨のFramingを除去
+    const mF = t.match(new RegExp("Framing\\s+" + code + "\\s*(?:" + sym + ")?\\s*" + NUM, "i"));
+    const rest = t.replace(
+      new RegExp("\\+?\\s*Framing\\s+" + code + "\\s*(?:" + sym + ")?\\s*" + NUM, "ig"), "");
+    const mB = rest.match(new RegExp(code + "\\s*(?:" + sym + ")?\\s*" + NUM, "i"));
+    base[code] = mB ? mB[1] : null;
+    framing[code] = mF ? mF[1] : null;
+  }
+  return { base, framing };
 }
 
 function detectPriceMode(text) {
   const t = text || "";
-  return { dual: /USD|\$/.test(t) && /JPY|¥|円/.test(t), framing: /Framing/i.test(t) };
+  const hasJpy = /JPY|¥|円/.test(t);
+  let foreign = null;
+  for (const code of FOREIGN_CURRENCIES) {
+    if (new RegExp(code + "|" + CURRENCY_SYMBOLS[code]).test(t)) { foreign = code; break; }
+  }
+  return { dual: hasJpy && foreign !== null, framing: /Framing/i.test(t), foreign };
 }
 
 /* モードに応じた価格行を組み立てる。各行は {type:"line",text} または {type:"cols",cols:[左,右]} */
-function buildPriceLines(comp, dual, framing) {
+function buildPriceLines(comp, mode) {
   const warns = [];
   const A = AMT_PLACEHOLDER;
-  if (!framing) {
-    if (dual) {
-      const j = comp.jpyBase || A, u = comp.usdBase || A;
-      if (!comp.jpyBase) warns.push("JPY金額が元ファイルに無いため 0,000 にしました。手動で入力してください。");
-      if (!comp.usdBase) warns.push("USD金額が抽出できませんでした。手動で確認してください。");
-      return { lines: [{ type: "line", text: `JPY ${j} / USD ${u} excl. TAX` }], warns };
+  const base = comp.base, framing = comp.framing;
+  const foreign = mode.foreign;
+  const jpy = base.JPY;
+  const fx = foreign ? base[foreign] : null;
+  if (!mode.framing) {
+    if (mode.dual) {
+      const j = jpy || A, u = fx || A;
+      if (!jpy) warns.push("JPY金額が元ファイルに無いため 0,000 にしました。手動で入力してください。");
+      if (!fx) warns.push(`${foreign}金額が抽出できませんでした。手動で確認してください。`);
+      return { lines: [{ type: "line", text: `JPY ${j} / ${foreign} ${u} excl. TAX` }], warns };
     }
-    if (comp.usdBase) return { lines: [{ type: "line", text: `USD ${comp.usdBase} excl. TAX` }], warns };
-    if (comp.jpyBase) return { lines: [{ type: "line", text: `JPY ${comp.jpyBase} excl. TAX` }], warns };
+    if (fx) return { lines: [{ type: "line", text: `${foreign} ${fx} excl. TAX` }], warns };
+    if (jpy) return { lines: [{ type: "line", text: `JPY ${jpy} excl. TAX` }], warns };
     // 価格が全く読み取れない場合はテンプレート文言を挿入(通貨・金額とも要上書き)
     warns.push("価格が読み取れませんでした。通貨・金額を手動で入力してください。");
     return { lines: [{ type: "line", text: `${CUR_PLACEHOLDER} ${A} excl. TAX` }], warns };
   }
   // 額装あり
-  if (dual) {
-    const ub = comp.usdBase || A, jb = comp.jpyBase || A;
-    const uf = comp.usdFraming || A, jf = comp.jpyFraming || A;
-    if (!(comp.jpyBase && comp.jpyFraming)) warns.push("JPY金額が不足しています。手動で入力してください。");
-    if (!comp.usdFraming) warns.push("USD Framing金額が抽出できませんでした。手動で確認してください。");
+  if (mode.dual) {
+    const ub = fx || A, jb = jpy || A;
+    const uf = (foreign ? framing[foreign] : null) || A, jf = framing.JPY || A;
+    if (!(jpy && framing.JPY)) warns.push("JPY金額が不足しています。手動で入力してください。");
+    if (!(foreign && framing[foreign])) warns.push(`${foreign} Framing金額が抽出できませんでした。手動で確認してください。`);
     return {
       lines: [
-        { type: "cols", cols: [`USD ${ub}`, `JPY ${jb}`] },
-        { type: "cols", cols: [`+ Framing USD ${uf} excl. TAX`, `+ Framing JPY ${jf} excl. TAX`] },
+        { type: "cols", cols: [`${foreign} ${ub}`, `JPY ${jb}`] },
+        { type: "cols", cols: [`+ Framing ${foreign} ${uf} excl. TAX`, `+ Framing JPY ${jf} excl. TAX`] },
       ], warns,
     };
   }
-  const cur = comp.usdBase ? "USD" : (comp.jpyBase ? "JPY" : CUR_PLACEHOLDER);
-  const base = comp.usdBase || comp.jpyBase || A;
-  const fram = comp.usdFraming || comp.jpyFraming || A;
+  const cur = fx ? foreign : (jpy ? "JPY" : CUR_PLACEHOLDER);
+  const b = fx || jpy || A;
+  const fr = (foreign ? framing[foreign] : null) || framing.JPY || A;
   return {
     lines: [
-      { type: "cols", cols: [`${cur} ${base}`] },
-      { type: "cols", cols: [`+ Framing ${cur} ${fram} excl. TAX`] },
+      { type: "cols", cols: [`${cur} ${b}`] },
+      { type: "cols", cols: [`+ Framing ${cur} ${fr} excl. TAX`] },
     ], warns,
   };
 }
@@ -320,10 +334,10 @@ async function run() {
       const missing = ["artist", "title", "year", "code"].filter(k => !fields[k]);
       if (!fields.middle.length) missing.push("technique/size");
 
-      // 価格の形式は常に元ファイルから自動判定する
+      // 価格の形式は常に元ファイルから自動判定する(併記/額装/外貨コード)
       const comp = parsePriceComponents(fields.priceRaw);
-      const { dual, framing } = detectPriceMode(fields.priceRaw);
-      const { lines: priceLines, warns } = buildPriceLines(comp, dual, framing);
+      const mode = detectPriceMode(fields.priceRaw);
+      const { lines: priceLines, warns } = buildPriceLines(comp, mode);
 
       if (missing.length) {
         const ja = { artist: "作家名", title: "作品名", year: "年", code: "管理番号", "technique/size": "技法・サイズ" };
